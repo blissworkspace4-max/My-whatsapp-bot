@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
+import { getAIReply, clearHistory } from '../services/ai';
 
 const router = Router();
 
@@ -35,45 +36,56 @@ router.post('/webhook', async (req: Request, res: Response) => {
     try {
         const body = req.body;
 
-        // Ensure this is a message from a WhatsApp API account
         if (body.object === 'whatsapp_business_account') {
 
-            // Often Meta batches messages, so we iterate through entries
             for (const entry of body.entry) {
                 const changes = entry.changes[0];
                 const value = changes.value;
 
-                // Check if it's an actual message and not just a status update (like 'delivered')
+                // Only process real messages, ignore delivery/read status updates
                 if (value.messages && value.messages[0]) {
                     const message = value.messages[0];
-                    const senderPhone = message.from; // Phone number of the user sending the message
+                    const senderPhone = message.from;
+
+                    // Acknowledge Meta immediately to avoid retry storms
+                    res.sendStatus(200);
 
                     let incomingText = '';
                     if (message.type === 'text') {
-                        incomingText = message.text.body;
+                        incomingText = message.text.body.trim();
+                    } else {
+                        // For non-text messages (images, audio, etc.) let AI know
+                        incomingText = '[User sent a non-text message]';
                     }
 
-                    console.log(`💬 New Message from ${senderPhone}: ${incomingText}`);
+                    console.log(`💬 [${senderPhone}]: ${incomingText}`);
 
-                    // Acknowledge receipt to avoid Meta retrying the same webhook
-                    res.sendStatus(200);
+                    // Special command: "reset" clears the conversation memory
+                    if (incomingText.toLowerCase() === 'reset') {
+                        clearHistory(senderPhone);
+                        await sendWhatsAppMessage(senderPhone, '🔄 Conversation reset! How can I help you?');
+                        return;
+                    }
 
-                    // ==========================================
-                    // 3. SEND A REPLY (ECHO BONE-STRUCTURE)
-                    // ==========================================
-                    await sendWhatsAppMessage(
-                        senderPhone,
-                        `Bot Reply: I received your message saying "${incomingText}". Our AI logic will go here soon!`
-                    );
+                    // Get AI reply from Grok
+                    const aiReply = await getAIReply(senderPhone, incomingText);
+                    console.log(`🤖 AI Reply to ${senderPhone}: ${aiReply}`);
+
+                    // Send the AI reply back via WhatsApp
+                    await sendWhatsAppMessage(senderPhone, aiReply);
                     return;
                 }
             }
         }
+
         res.sendStatus(200);
 
     } catch (error) {
         console.error('❌ Error handling webhook POST:', error);
-        res.sendStatus(500);
+        // Only send error status if we haven't already responded
+        if (!res.headersSent) {
+            res.sendStatus(500);
+        }
     }
 });
 
@@ -104,7 +116,7 @@ async function sendWhatsAppMessage(to: string, text: string) {
                 text: { body: text },
             },
         });
-        console.log(`📤 Reply sent successfully to ${to}`);
+        console.log(`📤 Reply sent to ${to}`);
     } catch (error: any) {
         console.error('❌ Error sending message:', error.response?.data || error.message);
     }

@@ -6,13 +6,13 @@ let _client: OpenAI | null = null;
 
 function getClient(): OpenAI {
     if (!_client) {
-        const apiKey = process.env.GROK_API_KEY;
+        const apiKey = process.env.GROQ_API_KEY;
         if (!apiKey) {
-            throw new Error('GROK_API_KEY environment variable is not set. Add it in Railway variables.');
+            throw new Error('GROQ_API_KEY environment variable is not set. Add it in Railway variables.');
         }
         _client = new OpenAI({
             apiKey,
-            baseURL: 'https://api.x.ai/v1',
+            baseURL: 'https://api.groq.com/openai/v1',  // Groq (groq.com) — ultra-fast, free tier
         });
     }
     return _client;
@@ -52,7 +52,7 @@ export async function getAIReply(senderPhone: string, userMessage: string): Prom
 
     try {
         const response = await getClient().chat.completions.create({
-            model: 'grok-3-mini',  // Grok's fast, cheap model — great for chat bots
+            model: 'llama-3.3-70b-versatile',  // Groq's best free model — fast & smart
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
                 ...history,

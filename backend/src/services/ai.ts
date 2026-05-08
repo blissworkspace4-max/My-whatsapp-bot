@@ -1,10 +1,22 @@
 import OpenAI from 'openai';
 
-// xAI's Grok is fully OpenAI-compatible — we just swap the baseURL
-const client = new OpenAI({
-    apiKey: process.env.GROK_API_KEY,
-    baseURL: 'https://api.x.ai/v1',
-});
+// Lazy client — only created on first use to avoid crash-at-startup
+// when env variables haven't loaded yet (e.g. Railway cold boot).
+let _client: OpenAI | null = null;
+
+function getClient(): OpenAI {
+    if (!_client) {
+        const apiKey = process.env.GROK_API_KEY;
+        if (!apiKey) {
+            throw new Error('GROK_API_KEY environment variable is not set. Add it in Railway variables.');
+        }
+        _client = new OpenAI({
+            apiKey,
+            baseURL: 'https://api.x.ai/v1',
+        });
+    }
+    return _client;
+}
 
 // ==========================================
 // IN-MEMORY CONVERSATION HISTORY
@@ -39,7 +51,7 @@ export async function getAIReply(senderPhone: string, userMessage: string): Prom
     history.push({ role: 'user', content: userMessage });
 
     try {
-        const response = await client.chat.completions.create({
+        const response = await getClient().chat.completions.create({
             model: 'grok-3-mini',  // Grok's fast, cheap model — great for chat bots
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },

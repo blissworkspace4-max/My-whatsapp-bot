@@ -74,7 +74,10 @@ export async function getAIReply(senderPhone: string, userMessage: string): Prom
         return aiReply;
 
     } catch (error: any) {
-        console.error('❌ Grok AI Error:', error?.message || error);
+        // Log full error detail so we can diagnose in Railway logs
+        console.error('❌ Grok AI Error Status:', error?.status);
+        console.error('❌ Grok AI Error Message:', error?.message);
+        console.error('❌ Grok AI Error Body:', JSON.stringify(error?.error || error?.response?.data || ''));
         return "I'm having a little trouble right now. Please try again in a moment.";
     }
 }
